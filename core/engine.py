@@ -26,7 +26,7 @@ import random
 from .constants import (
     WIDTH, HEIGHT, NUM_BARS, MAX_VAL,
     BG, MENU_BG, DIVIDER, TEXT_DIM, TEXT_BRIGHT, ACTIVE_BG, ACTIVE_BORDER,
-    SPEED_LEVELS, THEMES, THEME_NAMES,
+    SPEED_LEVELS, THEMES, THEME_NAMES, BAR_PRESETS,
 )
 from .sound import beep as _beep
 
@@ -108,6 +108,37 @@ def _status_bar(screen, font, text: str, y: int, h: int):
                         y + (h - surf.get_height()) // 2))
 
 
+def _done_overlay(screen, font_large, elapsed_ms: int, viz_h: int):
+    """Prominent centered banner showing sort completion time."""
+    text = f"Done in {_fmt_time(elapsed_ms)}"
+    surf = font_large.render(text, True, (100, 200, 120))
+    pad_x, pad_y = 24, 12
+    w = surf.get_width() + pad_x * 2
+    h = surf.get_height() + pad_y * 2
+    x = WIDTH // 2 - w // 2
+    y = viz_h - h - 14
+    bg = pygame.Surface((w, h), pygame.SRCALPHA)
+    bg.fill((10, 12, 16, 220))
+    screen.blit(bg, (x, y))
+    pygame.draw.rect(screen, (60, 120, 70), (x, y, w, h), 1)
+    screen.blit(surf, (x + pad_x, y + pad_y))
+
+
+def _toggle_btn_rect() -> pygame.Rect:
+    """Fixed-position toggle button for the algo menu."""
+    return pygame.Rect(WIDTH - 132, HEIGHT - 28, 126, 22)
+
+
+def _draw_toggle_btn(screen, font, menu_visible: bool):
+    label = "Menu ▼" if menu_visible else "Menu ▲"
+    rect  = _toggle_btn_rect()
+    pygame.draw.rect(screen, MENU_BG, rect)
+    pygame.draw.rect(screen, ACTIVE_BORDER if not menu_visible else DIVIDER, rect, 1)
+    surf = font.render(label, True, TEXT_BRIGHT if not menu_visible else TEXT_DIM)
+    screen.blit(surf, (rect.x + (rect.w - surf.get_width()) // 2,
+                        rect.y + (rect.h - surf.get_height()) // 2))
+
+
 # ── shared helpers ────────────────────────────────────────────────────────────
 
 def _new_array(n: int) -> list:
@@ -149,29 +180,38 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
     if not algos:
         raise ValueError("algos must not be empty")
 
-    n                             = len(algos)
-    menu_h, cols, _, _, btn_h    = _menu_layout(n)
-    viz_h                         = HEIGHT - menu_h
-    multi                         = n > 1
+    n     = len(algos)
+    multi = n > 1
+
+    # static layout info (used for menu; viz_h is recomputed each frame)
+    menu_h, cols, _, btn_w, btn_h = _menu_layout(n)
 
     pygame.init()
     pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption(algos[0][0] if n == 1 else "Sorting Algorithms")
-    clock  = pygame.time.Clock()
-    font   = pygame.font.SysFont("monospace", 14)
+    clock      = pygame.time.Clock()
+    font       = pygame.font.SysFont("monospace", 14)
+    font_large = pygame.font.SysFont("monospace", 22)
 
     # ── tunable defaults ──────────────────────────────────────────────────────
-    active_idx = 0
-    speed_idx  = 2          # ← change default speed here (index into SPEED_LEVELS)
-    theme_idx  = 0          # ← 0=Color, 1=B&W
-    num_bars   = default_bars
+    active_idx     = 0
+    speed_idx      = 2
+    theme_idx      = 0
+    menu_visible   = True
+    # pick the closest BAR_PRESETS entry to default_bars
+    bar_preset_idx = min(range(len(BAR_PRESETS)),
+                         key=lambda i: abs(BAR_PRESETS[i] - default_bars))
+    num_bars       = BAR_PRESETS[bar_preset_idx]
     # ─────────────────────────────────────────────────────────────────────────
 
-    paused = done = False
-    start_ms = pygame.time.get_ticks()
+    paused         = False
+    done           = False
+    finish_elapsed = None   # ms; set once when sorting ends, then frozen
 
     def new_sort(idx):
+        nonlocal finish_elapsed
+        finish_elapsed = None
         a = _new_array(num_bars)
         return a, algos[idx][1](a), pygame.time.get_ticks()
 
@@ -180,6 +220,9 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
 
     running = True
     while running:
+        # dynamic viz height depends on whether menu is showing
+        viz_h = (HEIGHT - menu_h) if menu_visible else HEIGHT
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -207,13 +250,18 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
                 elif k == pygame.K_t:
                     theme_idx = (theme_idx + 1) % len(THEMES)
 
+                elif k == pygame.K_h:
+                    menu_visible = not menu_visible
+
                 elif k == pygame.K_LEFTBRACKET:
-                    num_bars = max(20, num_bars - 10)
+                    bar_preset_idx = max(0, bar_preset_idx - 1)
+                    num_bars = BAR_PRESETS[bar_preset_idx]
                     arr, gen, start_ms = new_sort(active_idx)
                     cmp = swp = ovw = frozenset(); paused = done = False
 
                 elif k == pygame.K_RIGHTBRACKET:
-                    num_bars = min(200, num_bars + 10)
+                    bar_preset_idx = min(len(BAR_PRESETS) - 1, bar_preset_idx + 1)
+                    num_bars = BAR_PRESETS[bar_preset_idx]
                     arr, gen, start_ms = new_sort(active_idx)
                     cmp = swp = ovw = frozenset(); paused = done = False
 
@@ -224,10 +272,15 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
                         arr, gen, start_ms = new_sort(active_idx)
                         cmp = swp = ovw = frozenset(); paused = done = False
 
-            elif event.type == pygame.MOUSEBUTTONDOWN and multi:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
-                if my >= viz_h:
-                    col = mx // (WIDTH // cols)
+
+                # toggle button takes priority
+                if _toggle_btn_rect().collidepoint(mx, my):
+                    menu_visible = not menu_visible
+
+                elif multi and menu_visible and my >= viz_h:
+                    col = mx // btn_w
                     row = (my - viz_h) // btn_h
                     idx = row * cols + col
                     if 0 <= idx < n:
@@ -238,22 +291,34 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
         if not paused and not done:
             for _ in range(SPEED_LEVELS[speed_idx]):
                 cmp, swp, ovw, done = _advance(gen, arr, beep_on=True)
-                if done: break
+                if done:
+                    finish_elapsed = pygame.time.get_ticks() - start_ms
+                    break
 
-        theme    = THEMES[theme_idx]
-        elapsed  = pygame.time.get_ticks() - start_ms
-        spd      = SPEED_LEVELS[speed_idx]
+        theme = THEMES[theme_idx]
+        spd   = SPEED_LEVELS[speed_idx]
 
-        screen.fill(BG, (0, 0, WIDTH, viz_h))
+        # ── draw ─────────────────────────────────────────────────────────────
+        screen.fill(BG)
         _bars(screen, arr, cmp, swp, ovw, done, theme, 0, WIDTH, viz_h)
-        _mh, _cols, _, _bw, _bh = _menu_layout(n)
-        _algo_buttons(screen, font, algos, active_idx, viz_h,
-                      _mh, _cols, _bw, _bh)
+
+        if menu_visible:
+            _algo_buttons(screen, font, algos, active_idx, viz_h,
+                          menu_h, cols, btn_w, btn_h)
+
+        # top HUD — no timer (timer shown as overlay when done)
+        bars_label = (f"{num_bars // 1000}k" if num_bars >= 1000 else str(num_bars))
         _hud(screen, font,
              f"  {algos[active_idx][0]}  {spd}x [↑↓]  "
-             f"Bars {num_bars} [[ ]]  T={THEME_NAMES[theme_idx]}  "
+             f"Bars {bars_label} [[ ]]  T={THEME_NAMES[theme_idx]}  "
              f"R=restart  SPACE={'resume' if paused else 'pause'}  "
-             f"{'✓ ' if done else ''}{_fmt_time(elapsed)}  ")
+             f"H=menu  ")
+
+        # done-time overlay (frozen time, shown until restarted)
+        if done and finish_elapsed is not None:
+            _done_overlay(screen, font_large, finish_elapsed, viz_h)
+
+        _draw_toggle_btn(screen, font, menu_visible)
 
         pygame.display.flip()
         clock.tick(60)
