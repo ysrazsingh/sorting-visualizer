@@ -49,15 +49,20 @@ def _menu_layout(n: int):
 
 # ── drawing primitives ────────────────────────────────────────────────────────
 
-def _bars(screen, arr, cmp, swp, ovw, done, theme, x_off, col_w, viz_h):
-    """Draw bars for one algorithm column."""
+def _bars(screen, arr, cmp, swp, ovw, done, theme, x_off, col_w, viz_h,
+          verify_idx: int = -1):
+    """Draw bars for one algorithm column.  verify_idx >= 0 triggers scan mode."""
     bw = col_w / len(arr)
     for i, v in enumerate(arr):
-        if done:        color = theme["done"]
-        elif i in swp:  color = theme["swap"]
-        elif i in ovw:  color = theme["overwrite"]
-        elif i in cmp:  color = theme["compare"]
-        else:           color = theme["bar"]
+        if verify_idx >= 0:
+            if i < verify_idx:   color = theme["done"]
+            elif i == verify_idx: color = (255, 255, 255)
+            else:                 color = theme["bar"]
+        elif done:        color = theme["done"]
+        elif i in swp:    color = theme["swap"]
+        elif i in ovw:    color = theme["overwrite"]
+        elif i in cmp:    color = theme["compare"]
+        else:             color = theme["bar"]
         bh = (v / MAX_VAL) * viz_h
         pygame.draw.rect(screen, color,
                          (x_off + i * bw, viz_h - bh, max(bw - 1, 1), bh))
@@ -108,20 +113,78 @@ def _status_bar(screen, font, text: str, y: int, h: int):
                         y + (h - surf.get_height()) // 2))
 
 
-def _done_overlay(screen, font_large, elapsed_ms: int, viz_h: int):
-    """Prominent centered banner showing sort completion time."""
-    text = f"Done in {_fmt_time(elapsed_ms)}"
-    surf = font_large.render(text, True, (100, 200, 120))
-    pad_x, pad_y = 24, 12
-    w = surf.get_width() + pad_x * 2
-    h = surf.get_height() + pad_y * 2
-    x = WIDTH // 2 - w // 2
-    y = viz_h - h - 14
-    bg = pygame.Surface((w, h), pygame.SRCALPHA)
-    bg.fill((10, 12, 16, 220))
+def _done_overlay(screen, font_head, font_body,
+                  elapsed_ms: int, viz_h: int,
+                  comparisons: int, swaps: int, writes: int):
+    """Centered stats card shown after sort + verify completes."""
+    total = comparisons + swaps + writes
+
+    # ── content ──────────────────────────────────────────────────────────────
+    head_text = f"  Sorted in {_fmt_time(elapsed_ms)}  "
+    rows = [
+        ("Comparisons", f"{comparisons:,}",  (255, 209, 102)),
+        ("Swaps",       f"{swaps:,}",         (6,   214, 160)),
+        ("Writes",      f"{writes:,}",        (17,  138, 178)),
+        ("Total ops",   f"{total:,}",         (200, 210, 230)),
+    ]
+    hint_text = "SPACE / R  to restart"
+
+    # ── measure ──────────────────────────────────────────────────────────────
+    pad_x, pad_y = 40, 24
+    row_h   = font_body.get_height() + 12
+    label_w = max(font_body.size(r[0])[0] for r in rows)
+    value_w = max(font_body.size(r[1])[0] for r in rows)
+    inner_w = label_w + 32 + value_w
+
+    box_w = max(font_head.size(head_text)[0], inner_w) + pad_x * 2
+    box_h = (pad_y
+             + font_head.get_height() + 16          # header row
+             + 1 + 12                                # divider
+             + len(rows) * row_h                     # stat rows
+             + 14                                    # gap before hint
+             + font_body.get_height()                # hint
+             + pad_y)
+
+    x = WIDTH  // 2 - box_w // 2
+    y = viz_h  // 2 - box_h // 2
+
+    # ── background ───────────────────────────────────────────────────────────
+    bg = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+    bg.fill((6, 8, 12, 248))
     screen.blit(bg, (x, y))
-    pygame.draw.rect(screen, (60, 120, 70), (x, y, w, h), 1)
-    screen.blit(surf, (x + pad_x, y + pad_y))
+    # outer glow border (two rects, inner slightly brighter)
+    pygame.draw.rect(screen, (30, 60, 35),  (x - 1, y - 1, box_w + 2, box_h + 2), 1)
+    pygame.draw.rect(screen, (55, 130, 70), (x,     y,     box_w,     box_h),     2)
+
+    cy = y + pad_y
+
+    # ── header ───────────────────────────────────────────────────────────────
+    hsurf = font_head.render(head_text, True, (110, 215, 130))
+    screen.blit(hsurf, (x + box_w // 2 - hsurf.get_width() // 2, cy))
+    cy += hsurf.get_height() + 14
+
+    # divider
+    pygame.draw.line(screen, (35, 50, 40),
+                     (x + pad_x, cy), (x + box_w - pad_x, cy), 1)
+    cy += 12
+
+    # ── stat rows ─────────────────────────────────────────────────────────────
+    lx = x + pad_x
+    rx = x + box_w - pad_x   # right edge for value
+    for label, value, color in rows:
+        lsurf = font_body.render(label, True, (130, 135, 155))
+        vsurf = font_body.render(value, True, color)
+        screen.blit(lsurf, (lx, cy))
+        screen.blit(vsurf, (rx - vsurf.get_width(), cy))
+        # subtle row separator
+        pygame.draw.line(screen, (18, 22, 28),
+                         (lx, cy + row_h - 3), (rx, cy + row_h - 3), 1)
+        cy += row_h
+
+    # ── hint ─────────────────────────────────────────────────────────────────
+    cy += 6
+    hnt = font_body.render(hint_text, True, (55, 65, 75))
+    screen.blit(hnt, (x + box_w // 2 - hnt.get_width() // 2, cy))
 
 
 def _toggle_btn_rect() -> pygame.Rect:
@@ -183,7 +246,6 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
     n     = len(algos)
     multi = n > 1
 
-    # static layout info (used for menu; viz_h is recomputed each frame)
     menu_h, cols, _, btn_w, btn_h = _menu_layout(n)
 
     pygame.init()
@@ -191,27 +253,40 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption(algos[0][0] if n == 1 else "Sorting Algorithms")
     clock      = pygame.time.Clock()
-    font       = pygame.font.SysFont("monospace", 14)
-    font_large = pygame.font.SysFont("monospace", 22)
+    font       = pygame.font.SysFont("monospace", 14)   # HUD / buttons
+    font_body  = pygame.font.SysFont("monospace", 16)   # overlay stat rows
+    font_head  = pygame.font.SysFont("monospace", 22)   # overlay header
 
     # ── tunable defaults ──────────────────────────────────────────────────────
     active_idx     = 0
     speed_idx      = 2
     theme_idx      = 0
     menu_visible   = True
-    # pick the closest BAR_PRESETS entry to default_bars
+    seed           = 42
     bar_preset_idx = min(range(len(BAR_PRESETS)),
                          key=lambda i: abs(BAR_PRESETS[i] - default_bars))
     num_bars       = BAR_PRESETS[bar_preset_idx]
     # ─────────────────────────────────────────────────────────────────────────
 
-    paused         = False
+    paused         = True    # start stopped; press R or SPACE to begin
     done           = False
-    finish_elapsed = None   # ms; set once when sorting ends, then frozen
+    verifying      = False   # True while post-sort scan is running
+    verify_idx     = -1      # current scan position (-1 = not scanning)
+    finish_elapsed = None
+    comparisons    = 0
+    swaps          = 0
+    writes         = 0
+    fin_cmp = fin_swp = fin_wrt = 0
+
+    import random as _random
 
     def new_sort(idx):
-        nonlocal finish_elapsed
+        nonlocal finish_elapsed, comparisons, swaps, writes, verifying, verify_idx
         finish_elapsed = None
+        comparisons = swaps = writes = 0
+        verifying = False
+        verify_idx = -1
+        _random.seed(seed)
         a = _new_array(num_bars)
         return a, algos[idx][1](a), pygame.time.get_ticks()
 
@@ -220,7 +295,6 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
 
     running = True
     while running:
-        # dynamic viz height depends on whether menu is showing
         viz_h = (HEIGHT - menu_h) if menu_visible else HEIGHT
 
         for event in pygame.event.get():
@@ -233,12 +307,13 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
                 if k == pygame.K_r:
                     arr, gen, start_ms = new_sort(active_idx)
                     cmp = swp = ovw = frozenset()
-                    paused = done = False
+                    paused = False; done = False   # R always starts
 
                 elif k == pygame.K_SPACE:
                     if done:
                         arr, gen, start_ms = new_sort(active_idx)
-                        cmp = swp = ovw = frozenset(); done = False
+                        cmp = swp = ovw = frozenset()
+                        paused = False; done = False   # SPACE after done starts
                     else:
                         paused = not paused
 
@@ -257,25 +332,34 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
                     bar_preset_idx = max(0, bar_preset_idx - 1)
                     num_bars = BAR_PRESETS[bar_preset_idx]
                     arr, gen, start_ms = new_sort(active_idx)
-                    cmp = swp = ovw = frozenset(); paused = done = False
+                    cmp = swp = ovw = frozenset(); paused = True; done = False
 
                 elif k == pygame.K_RIGHTBRACKET:
                     bar_preset_idx = min(len(BAR_PRESETS) - 1, bar_preset_idx + 1)
                     num_bars = BAR_PRESETS[bar_preset_idx]
                     arr, gen, start_ms = new_sort(active_idx)
-                    cmp = swp = ovw = frozenset(); paused = done = False
+                    cmp = swp = ovw = frozenset(); paused = True; done = False
+
+                elif k == pygame.K_PERIOD:
+                    seed += 1
+                    arr, gen, start_ms = new_sort(active_idx)
+                    cmp = swp = ovw = frozenset(); paused = True; done = False
+
+                elif k == pygame.K_COMMA:
+                    seed -= 1
+                    arr, gen, start_ms = new_sort(active_idx)
+                    cmp = swp = ovw = frozenset(); paused = True; done = False
 
                 elif multi and k in _KEY_MAP:
                     idx = _KEY_MAP[k]
                     if idx < n:
                         active_idx = idx
                         arr, gen, start_ms = new_sort(active_idx)
-                        cmp = swp = ovw = frozenset(); paused = done = False
+                        cmp = swp = ovw = frozenset(); paused = True; done = False
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
 
-                # toggle button takes priority
                 if _toggle_btn_rect().collidepoint(mx, my):
                     menu_visible = not menu_visible
 
@@ -286,37 +370,74 @@ def run_visualizer(algos: list, default_bars: int = NUM_BARS) -> None:
                     if 0 <= idx < n:
                         active_idx = idx
                         arr, gen, start_ms = new_sort(active_idx)
-                        cmp = swp = ovw = frozenset(); paused = done = False
+                        cmp = swp = ovw = frozenset(); paused = True; done = False
 
+        # ── sort advance ─────────────────────────────────────────────────────
         if not paused and not done:
             for _ in range(SPEED_LEVELS[speed_idx]):
                 cmp, swp, ovw, done = _advance(gen, arr, beep_on=True)
+                if cmp: comparisons += 1
+                if swp: swaps       += 1
+                if ovw: writes      += 1
                 if done:
                     finish_elapsed = pygame.time.get_ticks() - start_ms
+                    fin_cmp, fin_swp, fin_wrt = comparisons, swaps, writes
+                    verifying  = True
+                    verify_idx = 0
                     break
+
+        # ── verify sweep ─────────────────────────────────────────────────────
+        if verifying and not paused:
+            steps   = max(1, num_bars // 90)   # ~1.5 s sweep for any size
+            n_beeps = SPEED_LEVELS[speed_idx]  # match sorting sound density
+            for i in range(n_beeps):
+                idx = min(verify_idx + i * steps // n_beeps, len(arr) - 1)
+                _beep(arr[idx])
+            verify_idx += steps
+            if verify_idx >= len(arr):
+                verify_idx = -1
+                verifying  = False
 
         theme = THEMES[theme_idx]
         spd   = SPEED_LEVELS[speed_idx]
 
         # ── draw ─────────────────────────────────────────────────────────────
         screen.fill(BG)
-        _bars(screen, arr, cmp, swp, ovw, done, theme, 0, WIDTH, viz_h)
+        _bars(screen, arr, cmp, swp, ovw,
+              done and not verifying,        # show green only after verify
+              theme, 0, WIDTH, viz_h,
+              verify_idx=verify_idx)
 
         if menu_visible:
             _algo_buttons(screen, font, algos, active_idx, viz_h,
                           menu_h, cols, btn_w, btn_h)
 
-        # top HUD — no timer (timer shown as overlay when done)
         bars_label = (f"{num_bars // 1000}k" if num_bars >= 1000 else str(num_bars))
+        status     = "verifying..." if verifying else ("resume" if paused else "pause")
         _hud(screen, font,
              f"  {algos[active_idx][0]}  {spd}x [↑↓]  "
-             f"Bars {bars_label} [[ ]]  T={THEME_NAMES[theme_idx]}  "
-             f"R=restart  SPACE={'resume' if paused else 'pause'}  "
+             f"Bars {bars_label} [[ ]]  "
+             f"Seed {seed} [,.]  "
+             f"T={THEME_NAMES[theme_idx]}  "
+             f"R=restart  SPACE={status}  "
              f"H=menu  ")
 
-        # done-time overlay (frozen time, shown until restarted)
-        if done and finish_elapsed is not None:
-            _done_overlay(screen, font_large, finish_elapsed, viz_h)
+        # live stat counters (bottom-left of viz area)
+        stat_line = (f"  C:{comparisons:,}  S:{swaps:,}  W:{writes:,}  "
+                     f"Ops:{comparisons + swaps + writes:,}  ")
+        stat_surf = font.render(stat_line, True, TEXT_DIM)
+        stat_bg   = pygame.Surface((stat_surf.get_width() + 4,
+                                    stat_surf.get_height() + 4), pygame.SRCALPHA)
+        stat_bg.fill((10, 12, 16, 180))
+        sy = viz_h - stat_surf.get_height() - 8
+        screen.blit(stat_bg,   (4, sy - 2))
+        screen.blit(stat_surf, (6, sy))
+
+        # done overlay — only after verify sweep finishes
+        if done and not verifying and finish_elapsed is not None:
+            _done_overlay(screen, font_head, font_body,
+                          finish_elapsed, viz_h,
+                          fin_cmp, fin_swp, fin_wrt)
 
         _draw_toggle_btn(screen, font, menu_visible)
 
