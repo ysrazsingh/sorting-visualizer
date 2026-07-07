@@ -1,4 +1,4 @@
-WIDTH, HEIGHT = 1400, 750
+WIDTH, HEIGHT = 1680, 900
 NUM_BARS      = 100
 MAX_VAL       = 280
 
@@ -13,7 +13,7 @@ BAR_PRESETS = [
 # menu height scales with number of algorithms (set by engine at runtime)
 # these are the defaults for the full 10-algo layout (2 rows × 45 px)
 MENU_H = 90
-VIZ_H  = HEIGHT - MENU_H   # 660
+VIZ_H  = HEIGHT - MENU_H   # 810
 
 BG            = (10,  12,  16)
 BAR_COLOR     = (239, 71,  111)

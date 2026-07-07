@@ -35,15 +35,21 @@ _KEY_MAP = {
     pygame.K_4: 3, pygame.K_5: 4, pygame.K_6: 5,
     pygame.K_7: 6, pygame.K_8: 7, pygame.K_9: 8,
     pygame.K_0: 9,
+    pygame.K_q: 10, pygame.K_w: 11, pygame.K_e: 12, pygame.K_a: 13,
+    pygame.K_s: 14,
 }
+
+# labels shown in menu buttons (matches _KEY_MAP order)
+_KEY_LABELS = list("123456789") + ["0", "Q", "W", "E", "A", "S"]
 
 # ── layout ────────────────────────────────────────────────────────────────────
 
 def _menu_layout(n: int):
     """(menu_h, cols, rows, btn_w, btn_h) for n algorithm buttons."""
-    if   n == 1: cols, rows, menu_h = 1, 1, 40
-    elif n <= 5: cols, rows, menu_h = n, 1, 50
-    else:        cols, rows, menu_h = 5, 2, 90
+    if   n == 1:  cols, rows, menu_h = 1, 1, 40
+    elif n <= 5:  cols, rows, menu_h = n, 1, 50
+    elif n <= 10: cols, rows, menu_h = 5, 2, 90
+    else:         cols, rows, menu_h = 5, 3, 135   # up to 15 algos
     return menu_h, cols, rows, WIDTH // cols, menu_h // rows
 
 
@@ -90,7 +96,7 @@ def _algo_buttons(screen, font, algos, active_idx, viz_h, menu_h, cols, btn_w, b
         if active:
             pygame.draw.rect(screen, ACTIVE_BORDER, (x, y, btn_w, btn_h), 2)
 
-        key_str = str(i + 1) if i < 9 else "0"
+        key_str = _KEY_LABELS[i] if i < len(_KEY_LABELS) else ""
         prefix  = f"{key_str}. " if len(algos) > 1 else ""
         label   = font.render(prefix + name, True, TEXT_BRIGHT if active else TEXT_DIM)
         screen.blit(label, (x + (btn_w - label.get_width())  // 2,
