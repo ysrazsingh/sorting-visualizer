@@ -1,4 +1,4 @@
-"""Shortcut: run all 10 sorting algorithms at once."""
+"""Shortcut: run all 15 sorting algorithms at once."""
 from algorithms import ALL_ALGORITHMS
 from core.engine import run_visualizer
 

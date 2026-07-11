@@ -3,14 +3,14 @@ Run sorting algorithm visualizations.
 
 Usage
 -----
-  python run.py                              # all 10 – switch with menu
+  python run.py                              # all 15 – switch with menu
   python run.py bubble                       # single algorithm
   python run.py merge quick heap             # three algorithms – switch with menu
 
   python run.py --parallel bubble merge quick   # race side-by-side, same array
-  python run.py --parallel                       # all 10 in parallel
+  python run.py --parallel                       # all 15 in parallel
 
-  python run.py --series                         # all 10 auto-advance in sequence
+  python run.py --series                         # all 15 auto-advance in sequence
   python run.py --series bubble selection insertion  # subset in sequence
 
   python run.py --bars 50 bubble             # start with 50 bars

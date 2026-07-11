@@ -19,7 +19,7 @@ A pygame-based visualizer for 15 sorting algorithms. Watch them sort in real tim
 | `Q` | Quick Sort | O(n log n) avg | O(log n) |
 | `W` | Radix Sort (LSD) | O(nk) | O(n+k) |
 | `E` | Selection Sort | O(n²) | O(1) |
-| `A` | Shell Sort | O(n log n) avg | O(1) |
+| `A` | Shell Sort | O(n²) worst, ~O(n^1.3) avg | O(1) |
 | `S` | Tim Sort | O(n log n) | O(n) |
 
 ## Install
